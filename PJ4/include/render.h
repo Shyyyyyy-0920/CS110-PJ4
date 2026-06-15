@@ -27,4 +27,9 @@ void render_game_basic(const Snake *snake, const Item *coin, int score);
  */
 void render_game_over(int score);
 
+/*
+ * 绘制排行榜页面。
+ */
+void render_scoreboard(void);
+
 #endif

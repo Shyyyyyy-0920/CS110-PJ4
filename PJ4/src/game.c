@@ -7,7 +7,7 @@
 #include "render.h"
 #include "snake.h"
 #include "systick.h"
-
+#include "scoreboard.h"
 /*
  * 处理方向输入。
  */
@@ -61,10 +61,32 @@ static int game_next_head_hits_coin(const Snake *snake, const Item *coin) {
 
 /*
  * 显示死亡页面。
+ *
+ * 玩家死亡后：
+ * - SW1：返回菜单
+ * - 摇杆中键：进入排行榜页面
+ *
+ * 注意：
+ * 排行榜更新不在这里做，而是在检测到死亡的那一刻做。
+ * 这样可以保证“即使玩家不进入 scoreboard 页面，排行榜也已经更新”。
  */
 static void game_show_dead_screen(int score) {
     render_game_over(score);
-    delay_1ms(900);
+
+    while (1) {
+        InputState input = input_read();
+
+        if (input.center) {
+            scoreboard_show_screen();
+            render_game_over(score);
+        }
+
+        if (input.sw1) {
+            return;
+        }
+
+        delay_1ms(30);
+    }
 }
 
 /*
@@ -135,6 +157,12 @@ GameResult game_run(LevelId level) {
              * 移动后进行死亡判定。
              */
             if (snake_hit_wall(&snake) || snake_hit_self(&snake)) {
+                /*
+                * 死亡后立刻更新排行榜。
+                * 这一步必须发生在进入 scoreboard 页面之前。
+                */
+                scoreboard_update(level, score);
+
                 game_show_dead_screen(score);
                 return GAME_RESULT_PLAYER_DEAD;
             }

@@ -3,7 +3,7 @@
 
 #include "config.h"
 #include "lcd/lcd.h"
-
+#include "scoreboard.h"
 /*
  * 清空屏幕。
  */
@@ -125,11 +125,90 @@ void render_game_basic(const Snake *snake, const Item *coin, int score) {
 
 /*
  * 绘制死亡页面。
+ *
+ * y 坐标只使用 0, 20, 40, 56，避免红屏。
  */
 void render_game_over(int score) {
     render_clear();
 
-    LCD_ShowString(20, 16, (u8 *)"Game Over", RED);
-    LCD_ShowString(20, 40, (u8 *)"Score:", WHITE);
-    LCD_ShowNum(76, 40, (u16)score, 3, YELLOW);
+    LCD_ShowString(20, 0, (u8 *)"Game Over", RED);
+
+    LCD_ShowString(20, 20, (u8 *)"Score:", WHITE);
+    LCD_ShowNum(76, 20, (u16)score, 3, YELLOW);
+
+    LCD_ShowString(0, 40, (u8 *)"CTR:Board", WHITE);
+    LCD_ShowString(0, 56, (u8 *)"SW1:Menu", WHITE);
+}
+
+/*
+ * 绘制排行榜中的关卡名。
+ */
+static void render_scoreboard_level(int x, int y, int level) {
+    if (level == LEVEL_1_1) {
+        LCD_ShowString(x, y, (u8 *)"1-1", WHITE);
+    } else if (level == LEVEL_1_2) {
+        LCD_ShowString(x, y, (u8 *)"1-2", WHITE);
+    } else if (level == LEVEL_1_3) {
+        LCD_ShowString(x, y, (u8 *)"1-3", WHITE);
+    } else {
+        LCD_ShowString(x, y, (u8 *)"---", GRAY);
+    }
+}
+
+/*
+ * 绘制排行榜中的一行。
+ *
+ * 坐标设计：
+ *   y = 20, 36, 52
+ *
+ * 这些 y 坐标都不会超过 64，因此不会触发 LCD_ShowString 的越界红屏。
+ */
+static void render_scoreboard_row(int index, int y) {
+    int level = scoreboard_get_level(index);
+    int score = scoreboard_get_score(index);
+
+    /*
+     * 序号：1. / 2. / 3.
+     */
+    LCD_ShowNum(0, y, (u16)(index + 1), 1, YELLOW);
+    LCD_ShowString(8, y, (u8 *)".", YELLOW);
+
+    /*
+     * 关卡名。
+     */
+    render_scoreboard_level(24, y, level);
+
+    /*
+     * 分数。
+     */
+    LCD_ShowString(64, y, (u8 *)"S:", WHITE);
+    LCD_ShowNum(88, y, (u16)score, 3, YELLOW);
+}
+
+/*
+ * 绘制排行榜页面。
+ *
+ * 页面说明：
+ *   Title: Scoreboard
+ *   1. 1-3 S:005
+ *   2. 1-1 S:003
+ *   3. 1-2 S:001
+ *
+ * SW1 返回菜单。
+ */
+void render_scoreboard(void) {
+    render_clear();
+
+    LCD_ShowString(0, 0, (u8 *)"Scoreboard", GREEN);
+
+    render_scoreboard_row(0, 20);
+    render_scoreboard_row(1, 36);
+    render_scoreboard_row(2, 52);
+
+    /*
+     * y = 64 是 8x16 字体的最后一行安全位置。
+     * 如果你之前已经把 LCD_ShowString 的红屏逻辑改成 return，
+     * 这里就更安全。
+     */
+    LCD_ShowString(0, 64, (u8 *)"SW1 Back", WHITE);
 }

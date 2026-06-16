@@ -5,6 +5,7 @@
 #include "types.h"
 #include "snake.h"
 #include "item.h"
+#include "level.h"
 
 /*
  * 渲染模块只负责“怎么画”。
@@ -14,13 +15,14 @@ void render_clear(void);
 void render_menu(LevelId selected_level);
 
 /*
- * 绘制基础游戏画面。
+ * 绘制游戏画面。
  *
  * snake：玩家蛇
- * coin：金币
+ * food：金币或宝石
  * score：当前分数
+ * level：当前关卡配置，用于绘制墙和传送门
  */
-void render_game_basic(const Snake *snake, const Item *coin, int score);
+void render_game_basic(const Snake *snake, const Item *food, int score, const LevelData *level);
 
 /*
  * 绘制死亡提示。

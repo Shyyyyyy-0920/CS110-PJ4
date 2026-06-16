@@ -4,15 +4,16 @@
 
 #include "types.h"
 #include "snake.h"
+#include "level.h"
 
 /*
  * Item 表示地图上的一个物品。
  *
- * 当前阶段只生成金币：
- * type = ITEM_COIN
+ * Level 1-1:
+ *   只生成金币。
  *
- * life_ms 用于记录金币已经存在了多久。
- * 金币超过 10 秒后刷新。
+ * Level 1-2:
+ *   50% 概率生成金币，50% 概率生成宝石。
  */
 typedef struct {
     Point pos;
@@ -27,20 +28,32 @@ typedef struct {
 void item_init(void);
 
 /*
- * 生成一个金币。
- * 金币不能生成在蛇身体上。
+ * 根据当前关卡生成食物。
+ *
+ * Level 1-1：只生成金币。
+ * Level 1-2：50% 金币，50% 宝石。
  */
-void item_spawn_coin(Item *item, const Snake *snake);
+void item_spawn_food(Item *item, const Snake *snake, const LevelData *level);
 
 /*
- * 更新金币生命周期。
- * 如果金币存在超过 COIN_LIFE_MS，则刷新位置。
+ * 更新物品生命周期。
+ *
+ * 金币 10 秒刷新。
+ * 宝石 5 秒刷新。
  */
-void item_update_coin_life(Item *item, const Snake *snake, int delta_ms);
+void item_update_life(Item *item, const Snake *snake, const LevelData *level, int delta_ms);
 
 /*
- * 判断蛇头是否吃到金币。
+ * 判断蛇头是否吃到物品。
  */
 int item_is_eaten_by_snake(const Item *item, const Snake *snake);
+
+/*
+ * 获取物品对应分数。
+ *
+ * 金币 +1
+ * 宝石 +2
+ */
+int item_get_score(const Item *item);
 
 #endif

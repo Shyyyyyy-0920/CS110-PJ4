@@ -84,15 +84,20 @@ static void render_score(int score) {
 }
 
 /*
- * 绘制金币。
+ * 绘制食物。
+ *
+ * 金币：红色
+ * 宝石：紫色
  */
-static void render_coin(const Item *coin) {
-    if (coin == 0 || !coin->active) {
+static void render_food(const Item *food) {
+    if (food == 0 || !food->active) {
         return;
     }
 
-    if (coin->type == ITEM_COIN) {
-        render_cell(coin->pos, RED);
+    if (food->type == ITEM_COIN) {
+        render_cell(food->pos, RED);
+    } else if (food->type == ITEM_GEM) {
+        render_cell(food->pos, MAGENTA);
     }
 }
 
@@ -110,15 +115,50 @@ static void render_snake(const Snake *snake) {
 }
 
 /*
+ * 绘制 Level 1-2 的墙。
+ */
+static void render_walls(const LevelData *level) {
+    if (level == 0) {
+        return;
+    }
+
+    for (int i = 0; i < level->wall_count; ++i) {
+        render_cell(level->walls[i], GRAY);
+    }
+}
+
+/*
+ * 绘制 Level 1-2 的传送门。
+ */
+static void render_portals(const LevelData *level) {
+    if (level == 0 || !level->has_portal) {
+        return;
+    }
+
+    render_cell(level->portal_a, BLUE);
+    render_cell(level->portal_b, BLUE);
+}
+
+
+/*
  * 绘制基础游戏画面。
  *
- * 当前仍然采用全屏重画，后续再做防闪烁优化。
+ * 当前仍然采用全屏重画。
+ * 后续可以改成增量渲染来减少闪烁。
  */
-void render_game_basic(const Snake *snake, const Item *coin, int score) {
+void render_game_basic(const Snake *snake, const Item *food, int score, const LevelData *level) {
     render_clear();
 
     render_game_border();
-    render_coin(coin);
+
+    /*
+     * Level 1-2 的墙和传送门。
+     * Level 1-1 中 wall_count = 0, has_portal = 0，因此不会显示。
+     */
+    render_walls(level);
+    render_portals(level);
+
+    render_food(food);
     render_snake(snake);
     render_score(score);
 }

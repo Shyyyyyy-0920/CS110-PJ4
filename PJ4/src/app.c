@@ -66,13 +66,7 @@ void app_run(void) {
         }
 
         if (input.center) {
-            /*
-             * 进入游戏。
-             * 当前 1-1 / 1-2 / 1-3 都先运行同一个基础蛇逻辑。
-             * 后续再根据 level 分别加入墙、传送门、敌方蛇等机制。
-             */
             game_run(selected_level);
-
             /*
              * 从游戏返回后重新显示菜单。
              */

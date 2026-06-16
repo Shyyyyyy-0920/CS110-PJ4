@@ -26,7 +26,7 @@
 /*
  * 当前阶段的游戏速度。
  */
-#define GAME_FPS            20
+#define GAME_FPS            50
 #define FRAME_TIME_MS       (1000 / GAME_FPS)
 
 #define SNAKE_NORMAL_STEP_MS 350

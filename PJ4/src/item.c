@@ -33,7 +33,13 @@ static int item_can_spawn_at(Point p, const Snake *snake, const LevelData *level
     if (p.y < 0 || p.y >= GRID_HEIGHT) {
         return 0;
     }
-
+    /*
+     * 避开左上角分数显示区域。
+     */
+    if (p.x <= 6 && p.y <= 1) {
+        return 0;
+    }
+    
     if (snake_contains_point(snake, p)) {
         return 0;
     }

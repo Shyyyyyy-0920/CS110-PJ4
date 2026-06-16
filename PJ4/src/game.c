@@ -1,5 +1,4 @@
 //单局游戏主逻辑
-// 单局游戏主逻辑
 #include "game.h"
 
 #include "config.h"
@@ -189,13 +188,13 @@ static GameResult game_run_level3(LevelId level_id) {
          */
         int step_ms = input.sw2 ? SNAKE_FAST_STEP_MS : SNAKE_NORMAL_STEP_MS;
 
-        delay_1ms(20);
-        elapsed_ms += 20;
+        delay_1ms(FRAME_TIME_MS);
+        elapsed_ms += FRAME_TIME_MS;
 
         /*
          * Level 1-3 中普通食物是金币，10 秒刷新。
          */
-        item_update_life(&food, &snake, &level, 20);
+        item_update_life(&food, &snake, &level, FRAME_TIME_MS);
 
         if (elapsed_ms >= step_ms) {
             elapsed_ms = 0;
@@ -325,14 +324,14 @@ GameResult game_run(LevelId level_id) {
          */
         int step_ms = input.sw2 ? SNAKE_FAST_STEP_MS : SNAKE_NORMAL_STEP_MS;
 
-        delay_1ms(20);
-        elapsed_ms += 20;
+        delay_1ms(FRAME_TIME_MS);
+        elapsed_ms += FRAME_TIME_MS;
 
         /*
          * 更新金币/宝石生命周期。
          * 金币 10 秒刷新，宝石 5 秒刷新。
          */
-        item_update_life(&food, &snake, &level, 20);
+        item_update_life(&food, &snake, &level, FRAME_TIME_MS);
 
         if (elapsed_ms >= step_ms) {
             elapsed_ms = 0;

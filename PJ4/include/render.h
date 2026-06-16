@@ -17,6 +17,14 @@ void render_clear(void);
 void render_menu(LevelId selected_level);
 
 /*
+ * 绘制菜单选中项动画。
+ *
+ * selected_level：当前选中的关卡
+ * anim_frame：动画帧编号，用于控制选中项颜色变化
+ */
+void render_menu_animated(LevelId selected_level, int anim_frame);
+
+/*
  * 绘制游戏画面。
  *
  * snake：玩家蛇

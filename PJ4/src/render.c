@@ -4,7 +4,13 @@
 #include "config.h"
 #include "lcd/lcd.h"
 #include "scoreboard.h"
+#ifndef DARK_GREEN
+#define DARK_GREEN 0x03E0
+#endif
 
+#ifndef LIGHT_GREEN
+#define LIGHT_GREEN 0x87F0
+#endif
 /*
  * 防闪烁渲染说明：
  *
@@ -57,14 +63,49 @@ void render_clear(void) {
 }
 
 /*
- * 绘制单个菜单项。
+ * 根据动画帧选择菜单高亮颜色。
+ *
+ * 通过不同绿色亮度模拟 breathing light。
  */
-static void render_menu_item(int index, const char *text, int selected) {
+static u16 render_menu_glow_color(int anim_frame) {
+    int phase = anim_frame % 4;
+
+    if (phase == 0) {
+        return DARK_GREEN;
+    } else if (phase == 1) {
+        return GREEN;
+    } else if (phase == 2) {
+        return LIGHT_GREEN;
+    } else {
+        return GREEN;
+    }
+}
+
+/*
+ * 清除一个菜单项所在的行。
+ *
+ * 只清除菜单项区域，不清除整屏，避免菜单动画造成整屏闪烁。
+ */
+static void render_clear_menu_item_row(int index) {
     u16 y = MENU_ITEM_Y0 + index * MENU_ITEM_GAP;
 
+    LCD_Fill(0, y, 80, y + FONT_HEIGHT - 1, BLACK);
+}
+
+/*
+ * 绘制单个菜单项。
+ */
+static void render_menu_item(int index,
+                             const char *text,
+                             int selected,
+                             u16 selected_color) {
+    u16 y = MENU_ITEM_Y0 + index * MENU_ITEM_GAP;
+
+    render_clear_menu_item_row(index);
+
     if (selected) {
-        LCD_ShowString(MENU_CURSOR_X, y, (u8 *)">", YELLOW);
-        LCD_ShowString(MENU_ITEM_X, y, (u8 *)text, YELLOW);
+        LCD_ShowString(MENU_CURSOR_X, y, (u8 *)">", selected_color);
+        LCD_ShowString(MENU_ITEM_X, y, (u8 *)text, selected_color);
     } else {
         LCD_ShowString(MENU_CURSOR_X, y, (u8 *)" ", WHITE);
         LCD_ShowString(MENU_ITEM_X, y, (u8 *)text, WHITE);
@@ -72,17 +113,41 @@ static void render_menu_item(int index, const char *text, int selected) {
 }
 
 /*
+ * 只重画三个菜单选项。
+ *
+ * 标题不变，所以动画刷新时不需要重画标题。
+ */
+static void render_menu_items(LevelId selected_level, int anim_frame) {
+    u16 glow_color = render_menu_glow_color(anim_frame);
+
+    render_menu_item(0, "1-1", selected_level == LEVEL_1_1, glow_color);
+    render_menu_item(1, "1-2", selected_level == LEVEL_1_2, glow_color);
+    render_menu_item(2, "1-3", selected_level == LEVEL_1_3, glow_color);
+}
+
+/*
  * 绘制关卡选择菜单。
+ *
+ * 第一次进入菜单时清屏并画标题。
  */
 void render_menu(LevelId selected_level) {
     render_clear();
 
     LCD_ShowString(MENU_TITLE_X, MENU_TITLE_Y, (u8 *)"PJ4 Snake", GREEN);
 
-    render_menu_item(0, "1-1", selected_level == LEVEL_1_1);
-    render_menu_item(1, "1-2", selected_level == LEVEL_1_2);
-    render_menu_item(2, "1-3", selected_level == LEVEL_1_3);
+    render_menu_items(selected_level, 0);
 }
+
+/*
+ * 菜单动画刷新。
+ *
+ * 不清整屏，只刷新三个菜单选项。
+ * 这样选中项会有绿色呼吸灯效果，同时不会造成整屏闪烁。
+ */
+void render_menu_animated(LevelId selected_level, int anim_frame) {
+    render_menu_items(selected_level, anim_frame);
+}
+
 
 /*
  * 网格坐标转换为像素坐标。

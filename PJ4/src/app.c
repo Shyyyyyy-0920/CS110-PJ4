@@ -1,7 +1,7 @@
 //主循环和状态切换
 // 主循环和状态切换
 #include "app.h"
-
+#include "config.h"
 #include "types.h"
 #include "input.h"
 #include "render.h"
@@ -49,6 +49,9 @@ static LevelId app_menu_next_level(LevelId level) {
 void app_run(void) {
     LevelId selected_level = LEVEL_1_1;
 
+    int menu_anim_frame = 0;
+    int menu_anim_elapsed = 0;
+
     input_init();
     render_menu(selected_level);
 
@@ -57,22 +60,54 @@ void app_run(void) {
 
         if (input.up) {
             selected_level = app_menu_prev_level(selected_level);
+
+            /*
+             * 切换选项后，从动画初始帧重新开始。
+             */
+            menu_anim_frame = 0;
+            menu_anim_elapsed = 0;
+
             render_menu(selected_level);
         }
 
         if (input.down) {
             selected_level = app_menu_next_level(selected_level);
+
+            /*
+             * 切换选项后，从动画初始帧重新开始。
+             */
+            menu_anim_frame = 0;
+            menu_anim_elapsed = 0;
+
             render_menu(selected_level);
         }
 
         if (input.center) {
             game_run(selected_level);
+
             /*
-             * 从游戏返回后重新显示菜单。
+             * 从游戏返回菜单后，重新绘制菜单并重置动画。
              */
+            menu_anim_frame = 0;
+            menu_anim_elapsed = 0;
+
             render_menu(selected_level);
         }
 
-        delay_1ms(30);
+        /*
+         * 菜单动画刷新。
+         *
+         * 每 180ms 切换一次颜色。
+         * 这样选中的关卡会呈现绿色呼吸灯效果。
+         */
+        delay_1ms(FRAME_TIME_MS);
+        menu_anim_elapsed += FRAME_TIME_MS;
+
+        if (menu_anim_elapsed >= 180) {
+            menu_anim_elapsed = 0;
+            menu_anim_frame++;
+
+            render_menu_animated(selected_level, menu_anim_frame);
+        }
     }
 }

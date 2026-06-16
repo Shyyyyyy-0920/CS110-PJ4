@@ -1,15 +1,59 @@
-//绘制菜单、蛇、金币、墙、排行榜等
+// 绘制菜单、蛇、金币、墙、排行榜等
 #include "render.h"
 
 #include "config.h"
 #include "lcd/lcd.h"
 #include "scoreboard.h"
+
+/*
+ * 防闪烁渲染说明：
+ *
+ * 原来的实现是每一帧都 LCD_Clear(BLACK)，然后重画整屏。
+ * 这样会导致 LCD 明显闪烁。
+ *
+ * 现在改为：
+ * 1. 第一次进入游戏时，全屏绘制一次；
+ * 2. 后续每帧只擦除上一帧的动态对象；
+ * 3. 再重画当前帧的动态对象；
+ * 4. 墙、传送门、边框属于静态对象，只在必要时重画。
+ *
+ * 这样可以显著减少闪烁。
+ */
+
+/*
+ * 普通关卡 1-1 / 1-2 的上一帧缓存。
+ */
+static int render_basic_initialized = 0;
+static Snake render_prev_snake;
+static Item render_prev_food;
+static LevelData render_prev_level;
+static int render_prev_score = 0;
+
+/*
+ * Level 1-3 的上一帧缓存。
+ */
+static int render_level3_initialized = 0;
+static Snake render_prev_l3_snake;
+static Item render_prev_l3_food;
+static LevelData render_prev_l3_level;
+static EnemySnake render_prev_l3_enemy;
+static Point render_prev_l3_drops[ENEMY_SNAKE_LEN];
+static int render_prev_l3_drop_active[ENEMY_SNAKE_LEN];
+static int render_prev_l3_score = 0;
+
 /*
  * 清空屏幕。
+ *
+ * 注意：
+ * 只要切换到菜单、死亡页面、排行榜页面，就重置游戏渲染缓存。
+ * 这样下一次进入游戏时会重新全屏绘制，避免残影。
  */
 void render_clear(void) {
     BACK_COLOR = BLACK;
     LCD_Clear(BLACK);
+
+    render_basic_initialized = 0;
+    render_level3_initialized = 0;
 }
 
 /*
@@ -52,17 +96,46 @@ static int render_cell_y(int grid_y) {
 }
 
 /*
+ * 判断格子是否在地图内。
+ */
+static int render_point_in_grid(Point p) {
+    if (p.x < 0 || p.x >= GRID_WIDTH) {
+        return 0;
+    }
+
+    if (p.y < 0 || p.y >= GRID_HEIGHT) {
+        return 0;
+    }
+
+    return 1;
+}
+
+/*
  * 绘制一个格子。
  */
 static void render_cell(Point p, u16 color) {
-    int x = render_cell_x(p.x);
-    int y = render_cell_y(p.y);
+    int x;
+    int y;
+
+    if (!render_point_in_grid(p)) {
+        return;
+    }
+
+    x = render_cell_x(p.x);
+    y = render_cell_y(p.y);
 
     LCD_Fill(x,
              y,
              x + CELL_SIZE - 1,
              y + CELL_SIZE - 1,
              color);
+}
+
+/*
+ * 擦除一个格子。
+ */
+static void render_erase_cell(Point p) {
+    render_cell(p, BLACK);
 }
 
 /*
@@ -75,12 +148,20 @@ static void render_game_border(void) {
 /*
  * 绘制分数。
  *
- * LCD_ShowNum(x, y, num, len, color) 会固定显示 len 位。
- * 这里用 3 位足够当前阶段测试，例如 000, 001, 012。
+ * 注意：
+ * 分数区域会覆盖左上角一小块网格。
+ * 这和之前全屏重画版本保持一致。
  */
 static void render_score(int score) {
     LCD_ShowString(0, 0, (u8 *)"S:", WHITE);
     LCD_ShowNum(16, 0, (u16)score, 3, YELLOW);
+}
+
+/*
+ * 只清空分数显示区域。
+ */
+static void render_clear_score_area(void) {
+    LCD_Fill(0, 0, 48, FONT_HEIGHT - 1, BLACK);
 }
 
 /*
@@ -127,6 +208,15 @@ static void render_snake(const Snake *snake) {
 }
 
 /*
+ * 擦除玩家蛇上一帧。
+ */
+static void render_erase_snake(const Snake *snake) {
+    for (int i = 0; i < snake->length; ++i) {
+        render_erase_cell(snake->body[i]);
+    }
+}
+
+/*
  * 绘制敌方蛇。
  *
  * 敌方蛇头用蓝色，身体用灰色。
@@ -145,6 +235,18 @@ static void render_enemy(const EnemySnake *enemy) {
     }
 }
 
+/*
+ * 擦除敌方蛇上一帧。
+ */
+static void render_erase_enemy(const EnemySnake *enemy) {
+    if (enemy == 0 || !enemy->alive) {
+        return;
+    }
+
+    for (int i = 0; i < ENEMY_SNAKE_LEN; ++i) {
+        render_erase_cell(enemy->body[i]);
+    }
+}
 
 /*
  * 绘制 Level 1-2 的墙。
@@ -171,34 +273,147 @@ static void render_portals(const LevelData *level) {
     render_cell(level->portal_b, BLUE);
 }
 
-
 /*
- * 绘制基础游戏画面。
+ * 绘制静态地图元素。
  *
- * 当前仍然采用全屏重画。
- * 后续可以改成增量渲染来减少闪烁。
+ * 静态元素包括：
+ * - 边框
+ * - 墙
+ * - 传送门
+ *
+ * 增量渲染时，擦除上一帧动态对象后，需要把静态元素补回来。
  */
-void render_game_basic(const Snake *snake, const Item *food, int score, const LevelData *level) {
-    render_clear();
-
+static void render_static_map(const LevelData *level) {
     render_game_border();
-
-    /*
-     * Level 1-2 的墙和传送门。
-     * Level 1-1 中 wall_count = 0, has_portal = 0，因此不会显示。
-     */
     render_walls(level);
     render_portals(level);
+}
 
+/*
+ * 保存普通关卡上一帧状态。
+ */
+static void render_save_basic_state(const Snake *snake,
+                                    const Item *food,
+                                    int score,
+                                    const LevelData *level) {
+    render_prev_snake = *snake;
+    render_prev_food = *food;
+    render_prev_score = score;
+
+    if (level != 0) {
+        render_prev_level = *level;
+    }
+}
+
+/*
+ * 保存 Level 1-3 上一帧状态。
+ */
+static void render_save_level3_state(const Snake *snake,
+                                     const Item *food,
+                                     int score,
+                                     const LevelData *level,
+                                     const EnemySnake *enemy,
+                                     const Point drops[ENEMY_SNAKE_LEN],
+                                     const int drop_active[ENEMY_SNAKE_LEN]) {
+    render_prev_l3_snake = *snake;
+    render_prev_l3_food = *food;
+    render_prev_l3_score = score;
+
+    if (level != 0) {
+        render_prev_l3_level = *level;
+    }
+
+    if (enemy != 0) {
+        render_prev_l3_enemy = *enemy;
+    }
+
+    for (int i = 0; i < ENEMY_SNAKE_LEN; ++i) {
+        render_prev_l3_drops[i] = drops[i];
+        render_prev_l3_drop_active[i] = drop_active[i];
+    }
+}
+
+/*
+ * 擦除上一帧掉落金币。
+ */
+static void render_erase_dropped_coins(const Point drops[ENEMY_SNAKE_LEN],
+                                       const int active[ENEMY_SNAKE_LEN]) {
+    for (int i = 0; i < ENEMY_SNAKE_LEN; ++i) {
+        if (active[i]) {
+            render_erase_cell(drops[i]);
+        }
+    }
+}
+
+/*
+ * 绘制普通游戏画面。
+ *
+ * 第一次调用：
+ *   全屏清空并完整绘制。
+ *
+ * 后续调用：
+ *   不再全屏清空，只擦除上一帧动态对象，然后绘制当前帧。
+ */
+void render_game_basic(const Snake *snake, const Item *food, int score, const LevelData *level) {
+    if (!render_basic_initialized) {
+        render_clear();
+
+        render_static_map(level);
+        render_food(food);
+        render_snake(snake);
+        render_score(score);
+
+        render_save_basic_state(snake, food, score, level);
+        render_basic_initialized = 1;
+        return;
+    }
+
+    /*
+     * 1. 擦除上一帧动态元素。
+     */
+    render_erase_snake(&render_prev_snake);
+
+    if (render_prev_food.active) {
+        render_erase_cell(render_prev_food.pos);
+    }
+
+    /*
+     * 2. 补回静态元素。
+     *
+     * 例如蛇经过传送门后，擦除蛇身可能会把传送门擦掉，
+     * 所以这里必须重画墙和传送门。
+     */
+    render_static_map(level);
+
+    /*
+     * 3. 如果分数变化，只清空分数区域。
+     */
+    if (score != render_prev_score) {
+        render_clear_score_area();
+    }
+
+    /*
+     * 4. 绘制当前帧动态元素。
+     */
     render_food(food);
     render_snake(snake);
     render_score(score);
+
+    /*
+     * 5. 保存当前帧，用于下一帧擦除。
+     */
+    render_save_basic_state(snake, food, score, level);
 }
 
 /*
  * 绘制 Level 1-3 游戏画面。
  *
- * 当前仍然使用全屏重画。
+ * 第一次调用：
+ *   全屏清空并完整绘制。
+ *
+ * 后续调用：
+ *   只擦除上一帧的玩家蛇、敌方蛇、金币、掉落金币，
+ *   然后绘制当前帧。
  */
 void render_game_level3(const Snake *snake,
                         const Item *food,
@@ -207,24 +422,71 @@ void render_game_level3(const Snake *snake,
                         const EnemySnake *enemy,
                         const Point drops[ENEMY_SNAKE_LEN],
                         const int drop_active[ENEMY_SNAKE_LEN]) {
-    render_clear();
+    if (!render_level3_initialized) {
+        render_clear();
 
-    render_game_border();
+        render_static_map(level);
+        render_food(food);
+        render_dropped_coins(drops, drop_active);
+        render_enemy(enemy);
+        render_snake(snake);
+        render_score(score);
+
+        render_save_level3_state(snake,
+                                 food,
+                                 score,
+                                 level,
+                                 enemy,
+                                 drops,
+                                 drop_active);
+
+        render_level3_initialized = 1;
+        return;
+    }
 
     /*
-     * 理论上 Level 1-3 没有墙和传送门。
-     * 这里仍然传入 level，是为了保持接口统一。
+     * 1. 擦除上一帧动态元素。
      */
-    render_walls(level);
-    render_portals(level);
+    render_erase_snake(&render_prev_l3_snake);
+    render_erase_enemy(&render_prev_l3_enemy);
 
+    if (render_prev_l3_food.active) {
+        render_erase_cell(render_prev_l3_food.pos);
+    }
+
+    render_erase_dropped_coins(render_prev_l3_drops, render_prev_l3_drop_active);
+
+    /*
+     * 2. 补回静态元素。
+     */
+    render_static_map(level);
+
+    /*
+     * 3. 如果分数变化，只清空分数区域。
+     */
+    if (score != render_prev_l3_score) {
+        render_clear_score_area();
+    }
+
+    /*
+     * 4. 绘制当前帧动态元素。
+     */
     render_food(food);
     render_dropped_coins(drops, drop_active);
-
     render_enemy(enemy);
     render_snake(snake);
-
     render_score(score);
+
+    /*
+     * 5. 保存当前帧。
+     */
+    render_save_level3_state(snake,
+                             food,
+                             score,
+                             level,
+                             enemy,
+                             drops,
+                             drop_active);
 }
 
 /*
@@ -311,8 +573,6 @@ void render_scoreboard(void) {
 
     /*
      * y = 64 是 8x16 字体的最后一行安全位置。
-     * 如果你之前已经把 LCD_ShowString 的红屏逻辑改成 return，
-     * 这里就更安全。
      */
     LCD_ShowString(0, 64, (u8 *)"SW1 Back", WHITE);
 }

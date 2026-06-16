@@ -11,7 +11,7 @@
 #include "snake.h"
 #include "systick.h"
 #include "scoreboard.h"
-
+#include "enemy.h"
 /*
  * 处理方向输入。
  */
@@ -64,6 +64,30 @@ static int game_next_head_hits_food(const Snake *snake, const Item *food) {
 }
 
 /*
+ * 判断玩家下一步是否会吃到敌方蛇死亡后掉落的金币。
+ *
+ * 返回值：
+ *   >= 0：被吃到的掉落金币下标
+ *   -1：没有吃到掉落金币
+ */
+static int game_next_head_hits_drop(const Snake *snake,
+                                    const Point drops[ENEMY_SNAKE_LEN],
+                                    const int active[ENEMY_SNAKE_LEN]) {
+    Point next = game_next_head(snake);
+
+    for (int i = 0; i < ENEMY_SNAKE_LEN; ++i) {
+        if (active[i] &&
+            drops[i].x == next.x &&
+            drops[i].y == next.y) {
+            return i;
+        }
+    }
+
+    return -1;
+}
+
+
+/*
  * 判断蛇是否撞到 Level 1-2 的墙。
  */
 static int game_hit_level_wall(const Snake *snake, const LevelData *level) {
@@ -99,9 +123,173 @@ static void game_show_dead_screen(int score) {
 }
 
 /*
+ * 运行 Level 1-3。
+ *
+ * Level 1-3 特性：
+ * 1. 生成一条长度为 3 的敌方蛇；
+ * 2. 有金币时，敌方蛇朝金币方向移动；
+ * 3. 没有金币时，敌方蛇保持当前方向巡航；
+ * 4. 敌方蛇接近墙时优先右转；
+ * 5. 玩家蛇头撞到敌方蛇身体，玩家死亡；
+ * 6. 敌方蛇头撞到玩家蛇身体，敌方死亡；
+ * 7. 敌方死亡后原地掉落 3 个金币。
+ */
+static GameResult game_run_level3(LevelId level_id) {
+    Snake snake;
+    EnemySnake enemy;
+    Item food;
+    LevelData level;
+
+    Point drops[ENEMY_SNAKE_LEN];
+    int drop_active[ENEMY_SNAKE_LEN];
+
+    int score = 0;
+    int elapsed_ms = 0;
+
+    /*
+     * 初始化掉落金币为空。
+     */
+    for (int i = 0; i < ENEMY_SNAKE_LEN; ++i) {
+        drops[i].x = -1;
+        drops[i].y = -1;
+        drop_active[i] = 0;
+    }
+
+    snake_init(&snake);
+    enemy_init(&enemy);
+
+    /*
+     * Level 1-3 没有墙、宝石、传送门。
+     * 但仍然初始化 level，方便 item_spawn_food() 判断默认规则。
+     */
+    level_init(&level, level_id);
+
+    item_init();
+    item_spawn_food(&food, &snake, &level);
+
+    render_game_level3(&snake, &food, score, &level, &enemy, drops, drop_active);
+
+    while (1) {
+        InputState input = input_read();
+
+        /*
+         * 游戏中按 SW1 返回菜单。
+         */
+        if (input.sw1) {
+            return GAME_RESULT_EXIT_TO_MENU;
+        }
+
+        /*
+         * 玩家方向输入。
+         */
+        game_handle_direction_input(&snake, input);
+
+        /*
+         * SW2 按住时加速。
+         */
+        int step_ms = input.sw2 ? SNAKE_FAST_STEP_MS : SNAKE_NORMAL_STEP_MS;
+
+        delay_1ms(20);
+        elapsed_ms += 20;
+
+        /*
+         * Level 1-3 中普通食物是金币，10 秒刷新。
+         */
+        item_update_life(&food, &snake, &level, 20);
+
+        if (elapsed_ms >= step_ms) {
+            elapsed_ms = 0;
+
+            /*
+             * 玩家移动前，预判是否吃到普通金币或掉落金币。
+             */
+            int will_eat_food = game_next_head_hits_food(&snake, &food);
+            int drop_index = game_next_head_hits_drop(&snake, drops, drop_active);
+
+            if (will_eat_food || drop_index >= 0) {
+                snake_move_and_grow(&snake);
+            } else {
+                snake_move(&snake);
+            }
+
+            /*
+             * 玩家吃普通金币。
+             */
+            if (will_eat_food) {
+                score += item_get_score(&food);
+                item_spawn_food(&food, &snake, &level);
+            }
+
+            /*
+             * 玩家吃敌方蛇死亡后掉落的金币。
+             * 每个掉落金币 +1 分并增长。
+             */
+            if (drop_index >= 0) {
+                score += 1;
+                drop_active[drop_index] = 0;
+            }
+
+            /*
+             * 更新敌方蛇。
+             */
+            if (enemy.alive) {
+                enemy_update(&enemy, &food);
+
+                /*
+                 * 如果敌方蛇头吃到普通金币，则让金币刷新。
+                 * 敌方蛇不加分。
+                 */
+                if (food.active &&
+                    food.type == ITEM_COIN &&
+                    enemy.body[0].x == food.pos.x &&
+                    enemy.body[0].y == food.pos.y) {
+                    item_spawn_food(&food, &snake, &level);
+                }
+            }
+
+            /*
+             * 玩家基础死亡判定：撞边界或自撞。
+             */
+            if (snake_hit_wall(&snake) || snake_hit_self(&snake)) {
+                scoreboard_update(level_id, score);
+                game_show_dead_screen(score);
+                return GAME_RESULT_PLAYER_DEAD;
+            }
+
+            /*
+             * 玩家蛇头撞到敌方蛇身体，玩家死亡。
+             */
+            if (enemy_player_hits_enemy(&enemy, &snake)) {
+                scoreboard_update(level_id, score);
+                game_show_dead_screen(score);
+                return GAME_RESULT_PLAYER_DEAD;
+            }
+
+            /*
+             * 敌方蛇头撞到玩家身体，敌方蛇死亡。
+             */
+            if (enemy_hits_player_body(&enemy, &snake)) {
+                enemy_make_drops(&enemy, drops, drop_active);
+                enemy.alive = 0;
+            }
+
+            render_game_level3(&snake, &food, score, &level, &enemy, drops, drop_active);
+        }
+    }
+}
+
+/*
  * 运行一局游戏。
  */
 GameResult game_run(LevelId level_id) {
+
+    /*
+     * Level 1-3 使用敌方蛇 AI 逻辑。
+     */
+    if (level_id == LEVEL_1_3) {
+        return game_run_level3(level_id);
+    }
+
     Snake snake;
     Item food;
     LevelData level;

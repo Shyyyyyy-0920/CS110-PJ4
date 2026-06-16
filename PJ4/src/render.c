@@ -102,6 +102,18 @@ static void render_food(const Item *food) {
 }
 
 /*
+ * 绘制敌方蛇死亡后掉落的金币。
+ */
+static void render_dropped_coins(const Point drops[ENEMY_SNAKE_LEN],
+                                 const int active[ENEMY_SNAKE_LEN]) {
+    for (int i = 0; i < ENEMY_SNAKE_LEN; ++i) {
+        if (active[i]) {
+            render_cell(drops[i], RED);
+        }
+    }
+}
+
+/*
  * 绘制玩家蛇。
  */
 static void render_snake(const Snake *snake) {
@@ -113,6 +125,26 @@ static void render_snake(const Snake *snake) {
         }
     }
 }
+
+/*
+ * 绘制敌方蛇。
+ *
+ * 敌方蛇头用蓝色，身体用灰色。
+ */
+static void render_enemy(const EnemySnake *enemy) {
+    if (enemy == 0 || !enemy->alive) {
+        return;
+    }
+
+    for (int i = 0; i < ENEMY_SNAKE_LEN; ++i) {
+        if (i == 0) {
+            render_cell(enemy->body[i], BLUE);
+        } else {
+            render_cell(enemy->body[i], GRAY);
+        }
+    }
+}
+
 
 /*
  * 绘制 Level 1-2 的墙。
@@ -160,6 +192,38 @@ void render_game_basic(const Snake *snake, const Item *food, int score, const Le
 
     render_food(food);
     render_snake(snake);
+    render_score(score);
+}
+
+/*
+ * 绘制 Level 1-3 游戏画面。
+ *
+ * 当前仍然使用全屏重画。
+ */
+void render_game_level3(const Snake *snake,
+                        const Item *food,
+                        int score,
+                        const LevelData *level,
+                        const EnemySnake *enemy,
+                        const Point drops[ENEMY_SNAKE_LEN],
+                        const int drop_active[ENEMY_SNAKE_LEN]) {
+    render_clear();
+
+    render_game_border();
+
+    /*
+     * 理论上 Level 1-3 没有墙和传送门。
+     * 这里仍然传入 level，是为了保持接口统一。
+     */
+    render_walls(level);
+    render_portals(level);
+
+    render_food(food);
+    render_dropped_coins(drops, drop_active);
+
+    render_enemy(enemy);
+    render_snake(snake);
+
     render_score(score);
 }
 
